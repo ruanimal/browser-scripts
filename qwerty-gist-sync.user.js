@@ -5,8 +5,6 @@
 // @description  为 Qwerty Learner 添加 GitHub Gist 数据同步功能（IndexedDB + localStorage 配置）
 // @author       ruan
 // @match        https://qwerty.kaiyi.cool/*
-// @match        http://localhost:*/*
-// @match        http://127.0.0.1:*/*
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_xmlhttpRequest
@@ -18,7 +16,7 @@
 // @require      https://cdn.jsdelivr.net/npm/dexie-export-import@4/dist/dexie-export-import.js
 // ==/UserScript==
 
-;(function () {
+; (function () {
   'use strict'
 
   // ─────────────────────────────────────────────────────────
@@ -777,24 +775,24 @@
     const token = cfg.token
     const gistId = cfg.gistId
 
-    ;(async () => {
-      try {
-        const payload = await serializePayload()
-        let newGistId = gistId
-        if (!newGistId) {
-          newGistId = await createGist(token, payload)
-        } else {
-          await updateGist(token, newGistId, payload)
+      ; (async () => {
+        try {
+          const payload = await serializePayload()
+          let newGistId = gistId
+          if (!newGistId) {
+            newGistId = await createGist(token, payload)
+          } else {
+            await updateGist(token, newGistId, payload)
+          }
+          saveConfig({ gistId: newGistId, lastSyncAt: payload.meta.syncAt, lastSyncDictId: payload.meta.dictId, lastSyncChapter: payload.meta.chapter })
+          // 更新面板显示
+          setMsg(formatSyncInfo(getConfig()), 'ok')
+          const gistIn = document.getElementById('ql-gs-gist-id')
+          if (gistIn && newGistId !== gistId) gistIn.value = newGistId
+        } catch (e) {
+          console.warn('[GistSync] 自动同步失败（静默）:', e)
         }
-        saveConfig({ gistId: newGistId, lastSyncAt: payload.meta.syncAt, lastSyncDictId: payload.meta.dictId, lastSyncChapter: payload.meta.chapter })
-        // 更新面板显示
-        setMsg(formatSyncInfo(getConfig()), 'ok')
-        const gistIn = document.getElementById('ql-gs-gist-id')
-        if (gistIn && newGistId !== gistId) gistIn.value = newGistId
-      } catch (e) {
-        console.warn('[GistSync] 自动同步失败（静默）:', e)
-      }
-    })()
+      })()
   }
 
   // ─────────────────────────────────────────────────────────
