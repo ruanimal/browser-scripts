@@ -642,7 +642,7 @@
       setProgress(0)
       setMsg('正在从云端恢复…', 'info')
       download(gistId, token, setProgress,
-        () => { setSyncing(false); setMsg(formatSyncInfo(getConfig()), 'ok') },
+        () => { setSyncing(false); setMsg('从云端恢复成功，即将刷新页面…', 'ok'); setTimeout(() => location.reload(), 1500) },
         (err) => { setSyncing(false); setMsg(err, 'err') }
       )
     })
@@ -747,7 +747,7 @@
       setProgress(0)
       setMsg('正在从云端恢复…', 'info')
       download(gistId, token, setProgress,
-        () => { setSyncing(false); setMsg(formatSyncInfo(getConfig()), 'ok') },
+        () => { setSyncing(false); setMsg('从云端恢复成功，即将刷新页面…', 'ok'); setTimeout(() => location.reload(), 1500) },
         (err) => { setSyncing(false); setMsg(err, 'err') }
       )
     })
@@ -762,12 +762,16 @@
   function tryAutoSync() {
     const cfg = getConfig()
     if (!cfg.autoSync || !cfg.token) return
+    if (isSyncing) return // 正在同步中，跳过本次检测
 
-    // 检测 ResultScreen 或 isFinished 信号（通过 DOM 特征）
-    const resultEl = document.querySelector('[class*="ResultScreen"],[class*="result-screen"],[data-testid="result-screen"]')
+    // 检测结果页面：Qwerty Learner 使用 Tailwind，无组件名 class，通过结果页特有按钮/容器识别
+    const resultEl = document.querySelector(
+      'button[title="下一章节"], button[title="重复本章节"], button[title="默写本章节"], button[title="练习其他章节"]'
+    )
     if (!resultEl) return
 
-    const chapterKey = cfg.gistId + '_' + (localStorage.getItem('currentChapter') ?? '0') + '_' + (localStorage.getItem('currentDict') ?? '')
+    // chapterKey 不含 gistId，避免首次同步创建 Gist 后 key 变化导致重复触发
+    const chapterKey = (localStorage.getItem('currentChapter') ?? '0') + '_' + (localStorage.getItem('currentDict') ?? '')
     if (lastAutoSyncKey === chapterKey) return
     lastAutoSyncKey = chapterKey
 
