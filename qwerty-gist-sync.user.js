@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Qwerty Learner - Gist 云同步
 // @namespace    https://github.com/
-// @version      1.0.3
+// @version      1.0.5
 // @description  为 Qwerty Learner 添加 GitHub Gist 数据同步功能（IndexedDB + localStorage 配置）
 // @author       ruan
 // @match        https://qwerty.kaiyi.cool/*
@@ -255,7 +255,7 @@
 
   async function fetchRemoteInfo(token, gistId) {
     const payload = await fetchGist(token, gistId)
-    return { syncAt: payload.meta.syncAt, dictId: payload.meta.dictId ?? '', chapter: payload.meta.chapter ?? 0, _payload: payload }
+    return { syncAt: payload.meta.syncAt, dictId: payload.meta.dictId ?? '', chapter: payload.meta.chapter ?? 0 }
   }
 
   // ─────────────────────────────────────────────────────────
@@ -274,7 +274,7 @@
       }
       saveConfig({ gistId, lastSyncAt: payload.meta.syncAt, lastSyncDictId: payload.meta.dictId, lastSyncChapter: payload.meta.chapter })
       onProgress(100)
-      onDone('上传成功！')
+      onDone()
     } catch (e) {
       onError(e instanceof Error ? e.message : '上传失败')
     }
@@ -287,7 +287,7 @@
       await deserializePayload(payload, (p) => onProgress(Math.floor(p * 0.95)))
       saveConfig({ lastSyncAt: payload.meta.syncAt, lastSyncDictId: payload.meta.dictId ?? '', lastSyncChapter: payload.meta.chapter ?? 0 })
       onProgress(100)
-      onDone('从云端恢复成功！提示：刷新页面后配置生效。')
+      onDone()
     } catch (e) {
       onError(e instanceof Error ? e.message : '下载失败')
     }
@@ -638,13 +638,7 @@
       const { token, gistId } = readPanelInputs()
       saveConfig({ token, gistId })
       if (!confirm('确定从云端恢复？这将完全覆盖本地数据，操作不可撤销。')) return
-      setSyncing(true)
-      setProgress(0)
-      setMsg('正在从云端恢复…', 'info')
-      download(gistId, token, setProgress,
-        () => { setSyncing(false); setMsg('从云端恢复成功，即将刷新页面…', 'ok'); setTimeout(() => location.reload(), 1500) },
-        (err) => { setSyncing(false); setMsg(err, 'err') }
-      )
+      doRestore(token, gistId)
     })
   }
 
@@ -659,7 +653,7 @@
 
     if (!gistId) {
       // 无 Gist ID → 直接上传创建
-      doUpload(token, gistId)
+      doUpload()
       return
     }
 
@@ -676,7 +670,7 @@
       } else {
         // 本地更新或相同 → 直接上传
         setMsg('本地更新，正在上传…', 'info')
-        doUpload(token, gistId)
+        doUpload()
       }
     } catch (e) {
       setSyncing(false)
@@ -684,7 +678,7 @@
     }
   }
 
-  async function doUpload(token, gistId) {
+  function doUpload() {
     setSyncing(true)
     setMsg('正在上传数据…', 'info')
     upload(
@@ -695,6 +689,20 @@
         setMsg(formatSyncInfo(cfg), 'ok')
         const gistIn = document.getElementById('ql-gs-gist-id')
         if (gistIn && cfg.gistId) gistIn.value = cfg.gistId
+      },
+      (err) => { setSyncing(false); setMsg(err, 'err') }
+    )
+  }
+
+  function doRestore(token, gistId) {
+    setSyncing(true)
+    setProgress(0)
+    setMsg('正在从云端恢复…', 'info')
+    download(gistId, token, setProgress,
+      () => {
+        setSyncing(false)
+        setMsg('从云端恢复成功，即将刷新页面…', 'ok')
+        setTimeout(() => location.reload(), 1500)
       },
       (err) => { setSyncing(false); setMsg(err, 'err') }
     )
@@ -739,17 +747,11 @@
 
     overlay.querySelector('.btn-local').addEventListener('click', () => {
       overlay.remove()
-      doUpload(token, gistId)
+      doUpload()
     })
     overlay.querySelector('.btn-remote').addEventListener('click', () => {
       overlay.remove()
-      setSyncing(true)
-      setProgress(0)
-      setMsg('正在从云端恢复…', 'info')
-      download(gistId, token, setProgress,
-        () => { setSyncing(false); setMsg('从云端恢复成功，即将刷新页面…', 'ok'); setTimeout(() => location.reload(), 1500) },
-        (err) => { setSyncing(false); setMsg(err, 'err') }
-      )
+      doRestore(token, gistId)
     })
     overlay.querySelector('.btn-cancel').addEventListener('click', () => overlay.remove())
   }
@@ -776,34 +778,12 @@
     lastAutoSyncKey = chapterKey
 
     console.log('[GistSync] 章节完成，自动上传…')
-    const token = cfg.token
-    const gistId = cfg.gistId
-
-      ; (async () => {
-        try {
-          const payload = await serializePayload()
-          let newGistId = gistId
-          if (!newGistId) {
-            newGistId = await createGist(token, payload)
-          } else {
-            await updateGist(token, newGistId, payload)
-          }
-          saveConfig({ gistId: newGistId, lastSyncAt: payload.meta.syncAt, lastSyncDictId: payload.meta.dictId, lastSyncChapter: payload.meta.chapter })
-          // 更新面板显示
-          setMsg(formatSyncInfo(getConfig()), 'ok')
-          const gistIn = document.getElementById('ql-gs-gist-id')
-          if (gistIn && newGistId !== gistId) gistIn.value = newGistId
-        } catch (e) {
-          console.warn('[GistSync] 自动同步失败（静默）:', e)
-        }
-      })()
+    doUpload()
   }
 
   // ─────────────────────────────────────────────────────────
   // 初始化
   // ─────────────────────────────────────────────────────────
-  let autoSyncTimer = null
-
   function init() {
     buildPanel()
 
@@ -814,7 +794,7 @@
     observer.observe(document.body, { childList: true, subtree: true })
 
     // 也用定时轮询兜底（每 5s 检查一次）
-    autoSyncTimer = setInterval(() => {
+    setInterval(() => {
       if (getConfig().autoSync) tryAutoSync()
     }, 5000)
   }
