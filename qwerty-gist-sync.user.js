@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Qwerty Learner - Gist 云同步
 // @namespace    https://github.com/
-// @version      1.0.5
+// @version      1.0.6
 // @description  为 Qwerty Learner 添加 GitHub Gist 数据同步功能（IndexedDB + localStorage 配置）
 // @author       ruan
 // @match        https://qwerty.kaiyi.cool/*
@@ -797,6 +797,15 @@
     setInterval(() => {
       if (getConfig().autoSync) tryAutoSync()
     }, 5000)
+
+    // 页面加载时自动同步：若已配置 token + gistId，延迟 1.5s 后执行一次智能同步
+    const cfg = getConfig()
+    if (cfg.token && cfg.gistId) {
+      setTimeout(() => {
+        setMsg('页面加载，正在自动同步…', 'info')
+        doSmartSync(cfg.token, cfg.gistId)
+      }, 1500)
+    }
   }
 
   // 等待 DOM 就绪
