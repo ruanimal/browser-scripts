@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Qwerty Learner - Gist 云同步
 // @namespace    https://github.com/
-// @version      1.0.6
+// @version      1.0.7
 // @description  为 Qwerty Learner 添加 GitHub Gist 数据同步功能（IndexedDB + localStorage 配置）
 // @author       ruan
 // @match        https://qwerty.kaiyi.cool/*
@@ -663,14 +663,23 @@
       setProgress(30)
       const cfg = getConfig()
 
-      if (remote.syncAt > cfg.lastSyncAt) {
-        // 云端比本地新 → 弹冲突弹窗
-        setSyncing(false) // 等用户操作
-        showConflictDialog(cfg, remote, token, gistId)
-      } else {
-        // 本地更新或相同 → 直接上传
+      // 直接上传的条件：同时满足以下三点
+      //   1. 本地时间戳 >= 云端（本地不旧）
+      //   2. 词典相同（未切换词典）
+      //   3. 本地章节进度 >= 云端（不会回退）
+      const localIsAhead =
+        cfg.lastSyncAt >= remote.syncAt &&
+        cfg.lastSyncDictId === remote.dictId &&
+        cfg.lastSyncChapter >= remote.chapter
+
+      if (localIsAhead) {
+        // 本地确认更新，安全直接上传
         setMsg('本地更新，正在上传…', 'info')
         doUpload()
+      } else {
+        // 其余情况（云端更新 / 换了词典 / 章节倒退）→ 弹冲突弹窗
+        setSyncing(false) // 等用户操作
+        showConflictDialog(cfg, remote, token, gistId)
       }
     } catch (e) {
       setSyncing(false)
