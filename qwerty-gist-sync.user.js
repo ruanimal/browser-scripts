@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Qwerty Learner - Gist 云同步
 // @namespace    https://github.com/
-// @version      1.0.8
+// @version      1.0.9
 // @description  为 Qwerty Learner 添加 GitHub Gist 数据同步功能（IndexedDB + localStorage 配置）
 // @author       ruan
 // @match        https://qwerty.kaiyi.cool/*
@@ -636,12 +636,72 @@
     })
 
     // 从云端恢复
-    document.getElementById('ql-gs-restore-btn').addEventListener('click', () => {
+    document.getElementById('ql-gs-restore-btn').addEventListener('click', async () => {
       const { token, gistId } = readPanelInputs()
       saveConfig({ token, gistId })
-      if (!confirm('确定从云端恢复？这将完全覆盖本地数据，操作不可撤销。')) return
+      if (!token || !gistId) { setMsg('请先填写 Token 和 Gist ID', 'err'); return }
+
+      setSyncing(true)
+      setMsg('正在获取云端信息…', 'info')
+      try {
+        const remote = await fetchRemoteInfo(token, gistId)
+        const cfg = getConfig()
+        setSyncing(false)
+        showRestoreConfirmDialog(cfg, remote, token, gistId)
+      } catch (e) {
+        setSyncing(false)
+        setMsg(e instanceof Error ? e.message : '获取云端数据失败', 'err')
+      }
+    })
+  }
+
+  // ─────────────────────────────────────────────────────────
+  // 恢复确认弹窗
+  // ─────────────────────────────────────────────────────────
+  function buildComparisonTable(localCfg, remote) {
+    return `
+      <table>
+        <tr><td></td><td style="text-align:center;font-weight:600">本地</td><td style="text-align:center;font-weight:600">云端</td></tr>
+        <tr>
+          <td>同步时间</td>
+          <td>${formatDate(localCfg.lastSyncAt)}</td>
+          <td style="color:#10b981;font-weight:600">${formatDate(remote.syncAt)}</td>
+        </tr>
+        <tr>
+          <td>词典</td>
+          <td>${escHtml(localCfg.lastSyncDictId || '—')}</td>
+          <td>${escHtml(remote.dictId || '—')}</td>
+        </tr>
+        <tr>
+          <td>章节</td>
+          <td>${localCfg.lastSyncChapter + 1}</td>
+          <td>${remote.chapter + 1}</td>
+        </tr>
+      </table>
+    `
+  }
+
+  async function showRestoreConfirmDialog(localCfg, remote, token, gistId) {
+    const overlay = document.createElement('div')
+    overlay.id = 'ql-gs-conflict-overlay'
+    overlay.innerHTML = `
+      <div id="ql-gs-conflict-dialog">
+        <h4>确认从云端恢复？</h4>
+        <p style="font-size:12px;color:#ef4444;margin-bottom:10px">此操作将完全覆盖本地 IndexedDB 和配置，不可撤销。</p>
+        ${buildComparisonTable(localCfg, remote)}
+        <div class="ql-gs-conflict-btns">
+          <button class="btn-remote" style="background:#ef4444;color:white" title="确认覆盖本地">确认覆盖</button>
+          <button class="btn-cancel">取消</button>
+        </div>
+      </div>
+    `
+    document.body.appendChild(overlay)
+
+    overlay.querySelector('.btn-remote').addEventListener('click', () => {
+      overlay.remove()
       doRestore(token, gistId)
     })
+    overlay.querySelector('.btn-cancel').addEventListener('click', () => overlay.remove())
   }
 
   // ─────────────────────────────────────────────────────────
@@ -729,24 +789,7 @@
       <div id="ql-gs-conflict-dialog">
         <h4>⚠️ 数据冲突</h4>
         <p style="font-size:12px;color:#6b7280;margin-bottom:10px">云端数据比本地更新，请选择保留哪份数据：</p>
-        <table>
-          <tr><td></td><td style="text-align:center;font-weight:600">本地</td><td style="text-align:center;font-weight:600">云端</td></tr>
-          <tr>
-            <td>同步时间</td>
-            <td>${formatDate(localCfg.lastSyncAt)}</td>
-            <td style="color:#10b981;font-weight:600">${formatDate(remote.syncAt)}</td>
-          </tr>
-          <tr>
-            <td>词典</td>
-            <td>${escHtml(localCfg.lastSyncDictId || '—')}</td>
-            <td>${escHtml(remote.dictId || '—')}</td>
-          </tr>
-          <tr>
-            <td>章节</td>
-            <td>${localCfg.lastSyncChapter + 1}</td>
-            <td>${remote.chapter + 1}</td>
-          </tr>
-        </table>
+        ${buildComparisonTable(localCfg, remote)}
         <div class="ql-gs-conflict-btns">
           <button class="btn-local" title="保留本地数据，覆盖云端">保留本地</button>
           <button class="btn-remote" title="使用云端数据，覆盖本地">使用云端</button>
