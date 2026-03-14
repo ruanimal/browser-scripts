@@ -4,9 +4,9 @@
 // @version      1.0.8
 // @description  为 Qwerty Learner 添加 GitHub Gist 数据同步功能（IndexedDB + localStorage 配置）
 // @author       ruan
+// @match        https://qwerty.kaiyi.cool/*
 // @updateURL    https://github.com/ruanimal/browser-scripts/raw/master/qwerty-gist-sync.user.js
 // @downloadURL  https://github.com/ruanimal/browser-scripts/raw/master/qwerty-gist-sync.user.js
-// @match        https://qwerty.kaiyi.cool/*
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_xmlhttpRequest
