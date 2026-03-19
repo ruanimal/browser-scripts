@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Qwerty Learner - Gist 云同步
 // @namespace    https://github.com/
-// @version      1.0.9
+// @version      1.0.10
 // @description  为 Qwerty Learner 添加 GitHub Gist 数据同步功能（IndexedDB + localStorage 配置）
 // @author       ruan
 // @match        https://qwerty.kaiyi.cool/*
@@ -530,6 +530,14 @@
     return new Date(ms).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
   }
 
+  function getCurrentLocalState() {
+    return {
+      lastSyncAt: GM_getValue('lastSyncAt', 0),
+      dictId: String(localStorage.getItem('currentDict') ?? 'cet4'),
+      chapter: Number(localStorage.getItem('currentChapter') ?? 0),
+    }
+  }
+
   /** 将最后一次同步信息格式化为面板底部的一行文字 */
   function formatSyncInfo(cfg) {
     if (!cfg.lastSyncAt) return '尚未同步'
@@ -659,6 +667,8 @@
   // 恢复确认弹窗
   // ─────────────────────────────────────────────────────────
   function buildComparisonTable(localCfg, remote) {
+    const localDictId = localCfg.dictId ?? localCfg.lastSyncDictId ?? ''
+    const localChapter = localCfg.chapter ?? localCfg.lastSyncChapter ?? 0
     return `
       <table>
         <tr><td></td><td style="text-align:center;font-weight:600">本地</td><td style="text-align:center;font-weight:600">云端</td></tr>
@@ -669,12 +679,12 @@
         </tr>
         <tr>
           <td>词典</td>
-          <td>${escHtml(localCfg.lastSyncDictId || '—')}</td>
+          <td>${escHtml(localDictId || '—')}</td>
           <td>${escHtml(remote.dictId || '—')}</td>
         </tr>
         <tr>
           <td>章节</td>
-          <td>${localCfg.lastSyncChapter + 1}</td>
+          <td>${localChapter + 1}</td>
           <td>${remote.chapter + 1}</td>
         </tr>
       </table>
@@ -723,25 +733,34 @@
       setProgress(10)
       const remote = await fetchRemoteInfo(token, gistId)
       setProgress(30)
-      const cfg = getConfig()
+      const local = getCurrentLocalState()
 
-      // 直接上传的条件：同时满足以下三点
-      //   1. 本地时间戳 >= 云端（本地不旧）
-      //   2. 词典相同（未切换词典）
-      //   3. 本地章节进度 >= 云端（不会回退）
+      const isSameVersion =
+        local.dictId === remote.dictId &&
+        local.chapter === remote.chapter &&
+        local.lastSyncAt === remote.syncAt
+
+      // 直接上传的条件：
+      //   1. 词典相同，且当前章节领先云端
+      //   2. 或者词典相同、章节相同，但本地上次同步时间晚于云端
       const localIsAhead =
-        cfg.lastSyncAt >= remote.syncAt &&
-        cfg.lastSyncDictId === remote.dictId &&
-        cfg.lastSyncChapter >= remote.chapter
+        local.dictId === remote.dictId && (
+          local.chapter > remote.chapter ||
+          (local.chapter === remote.chapter && local.lastSyncAt > remote.syncAt)
+        )
 
-      if (localIsAhead) {
+      if (isSameVersion) {
+        setSyncing(false)
+        setProgress(100)
+        setMsg('云端已是最新，无需同步', 'ok')
+      } else if (localIsAhead) {
         // 本地确认更新，安全直接上传
         setMsg('本地更新，正在上传…', 'info')
         doUpload()
       } else {
         // 其余情况（云端更新 / 换了词典 / 章节倒退）→ 弹冲突弹窗
         setSyncing(false) // 等用户操作
-        showConflictDialog(cfg, remote, token, gistId)
+        showConflictDialog(local, remote, token, gistId)
       }
     } catch (e) {
       setSyncing(false)
@@ -831,8 +850,8 @@
     if (lastAutoSyncKey === chapterKey) return
     lastAutoSyncKey = chapterKey
 
-    console.log('[GistSync] 章节完成，自动上传…')
-    doUpload()
+    console.log('[GistSync] 章节完成，自动智能同步…')
+    doSmartSync(cfg.token, cfg.gistId)
   }
 
   // ─────────────────────────────────────────────────────────
