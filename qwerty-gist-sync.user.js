@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Qwerty Learner - Gist 云同步
 // @namespace    https://github.com/
-// @version      1.0.10
+// @version      1.0.11
 // @description  为 Qwerty Learner 添加 GitHub Gist 数据同步功能（IndexedDB + localStorage 配置）
 // @author       ruan
 // @match        https://qwerty.kaiyi.cool/*
@@ -530,11 +530,21 @@
     return new Date(ms).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
   }
 
+  function readLocalStorageValue(key, fallback) {
+    const raw = localStorage.getItem(key)
+    if (raw === null) return fallback
+    try {
+      return JSON.parse(raw)
+    } catch {
+      return raw
+    }
+  }
+
   function getCurrentLocalState() {
     return {
       lastSyncAt: GM_getValue('lastSyncAt', 0),
-      dictId: String(localStorage.getItem('currentDict') ?? 'cet4'),
-      chapter: Number(localStorage.getItem('currentChapter') ?? 0),
+      dictId: String(readLocalStorageValue('currentDict', 'cet4')),
+      chapter: Number(readLocalStorageValue('currentChapter', 0)),
     }
   }
 
@@ -846,7 +856,7 @@
     if (!resultEl) return
 
     // chapterKey 不含 gistId，避免首次同步创建 Gist 后 key 变化导致重复触发
-    const chapterKey = (localStorage.getItem('currentChapter') ?? '0') + '_' + (localStorage.getItem('currentDict') ?? '')
+    const chapterKey = String(readLocalStorageValue('currentChapter', 0)) + '_' + String(readLocalStorageValue('currentDict', ''))
     if (lastAutoSyncKey === chapterKey) return
     lastAutoSyncKey = chapterKey
 
