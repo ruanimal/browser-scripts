@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Qwerty Learner - Gist 云同步
 // @namespace    https://github.com/
-// @version      1.0.11
+// @version      1.0.12
 // @description  为 Qwerty Learner 添加 GitHub Gist 数据同步功能（IndexedDB + localStorage 配置）
 // @author       ruan
 // @match        https://qwerty.kaiyi.cool/*
@@ -725,6 +725,20 @@
   }
 
   // ─────────────────────────────────────────────────────────
+  // 检查 IndexedDB 中是否存在晚于指定时间戳的 chapterRecord
+  // ─────────────────────────────────────────────────────────
+  async function hasNewChapterRecordSince(sinceTs) {
+    const db = openDB()
+    try {
+      await db.open()
+      const count = await db.table('chapterRecords').where('timeStamp').above(sinceTs).count()
+      return count > 0
+    } finally {
+      db.close()
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────
   // 智能同步
   // ─────────────────────────────────────────────────────────
   async function doSmartSync(token, gistId) {
@@ -760,6 +774,14 @@
         )
 
       if (isSameVersion) {
+        // 版本号相同，但仍需检查是否有章节完成后尚未同步的新记录
+        const hasNewRecord = await hasNewChapterRecordSince(remote.syncAt)
+        if (hasNewRecord) {
+          // 存在云端同步时间之后产生的 chapterRecord，本地有新数据，执行上传
+          setMsg('检测到新章节记录，正在上传…', 'info')
+          doUpload()
+          return
+        }
         setSyncing(false)
         setProgress(100)
         setMsg('云端已是最新，无需同步', 'ok')
