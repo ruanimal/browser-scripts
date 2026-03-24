@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Qwerty Learner - Gist 云同步
 // @namespace    https://github.com/
-// @version      1.0.12
+// @version      1.0.13
 // @description  为 Qwerty Learner 添加 GitHub Gist 数据同步功能（IndexedDB + localStorage 配置）
 // @author       ruan
 // @match        https://qwerty.kaiyi.cool/*
@@ -862,28 +862,48 @@
   }
 
   // ─────────────────────────────────────────────────────────
-  // 自动同步（章节完成检测）
+  // 自动同步（监听"下一章节"按钮点击）
   // ─────────────────────────────────────────────────────────
-  let lastAutoSyncKey = '' // 防止同一章节重复触发
 
   function tryAutoSync() {
     const cfg = getConfig()
     if (!cfg.autoSync || !cfg.token) return
-    if (isSyncing) return // 正在同步中，跳过本次检测
+    if (isSyncing) return
 
-    // 检测结果页面：Qwerty Learner 使用 Tailwind，无组件名 class，通过结果页特有按钮/容器识别
-    const resultEl = document.querySelector(
-      'button[title="下一章节"], button[title="重复本章节"], button[title="默写本章节"], button[title="练习其他章节"]'
-    )
-    if (!resultEl) return
+    // 检测结果页面是否存在
+    const nextBtn = document.querySelector('button[title="下一章节"]')
+    if (!nextBtn) return
 
-    // chapterKey 不含 gistId，避免首次同步创建 Gist 后 key 变化导致重复触发
-    const chapterKey = String(readLocalStorageValue('currentChapter', 0)) + '_' + String(readLocalStorageValue('currentDict', ''))
-    if (lastAutoSyncKey === chapterKey) return
-    lastAutoSyncKey = chapterKey
+    // 防止重复绑定：用 dataset 标记已绑定的按钮
+    if (nextBtn.dataset.gistSyncBound) return
+    nextBtn.dataset.gistSyncBound = '1'
 
-    console.log('[GistSync] 章节完成，自动智能同步…')
-    doSmartSync(cfg.token, cfg.gistId)
+    console.log('[GistSync] 检测到结果页，已挂载"下一章节"按钮监听')
+
+    // 记录当前章节号，点击后等 currentChapter 变化再上传
+    const chapterBefore = Number(readLocalStorageValue('currentChapter', 0))
+
+    nextBtn.addEventListener('click', () => {
+      const curCfg = getConfig()
+      if (!curCfg.autoSync || !curCfg.token || isSyncing) return
+
+      console.log('[GistSync] 用户点击"下一章节"，等待 chapter 更新…')
+      let waited = 0
+      const pollInterval = 300
+      const maxWait = 8000
+      const poll = setInterval(() => {
+        waited += pollInterval
+        const chapterNow = Number(readLocalStorageValue('currentChapter', 0))
+        if (chapterNow !== chapterBefore || waited >= maxWait) {
+          clearInterval(poll)
+          if (chapterNow === chapterBefore) {
+            console.warn('[GistSync] 等待 chapter 更新超时，仍执行上传')
+          }
+          console.log('[GistSync] chapter 已更新 %d → %d，开始同步', chapterBefore, chapterNow)
+          doSmartSync(curCfg.token, curCfg.gistId)
+        }
+      }, pollInterval)
+    }, { once: true })
   }
 
   // ─────────────────────────────────────────────────────────
